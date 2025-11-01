@@ -1,6 +1,1 @@
-{
-  "/api/tts/route": "app/api/tts/route.js",
-  "/page": "app/page.js",
-  "/test-ai/page": "app/test-ai/page.js",
-  "/hero/page": "app/hero/page.js"
-}
+{}

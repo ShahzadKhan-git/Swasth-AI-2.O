@@ -50,55 +50,6 @@ export default function MedicalChatbot() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
-  // Browser TTS (no external API)
-  const utterRef = useRef<SpeechSynthesisUtterance | null>(null)
-  const lastSpokenRef = useRef<string>('')
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null)
-  const [voiceReady, setVoiceReady] = useState(false)
-  const pendingTextRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    const load = () => setVoices(window.speechSynthesis?.getVoices?.() || [])
-    load()
-    window.speechSynthesis?.addEventListener?.('voiceschanged', load)
-    return () => window.speechSynthesis?.removeEventListener?.('voiceschanged', load)
-  }, [])
-
-  useEffect(() => {
-    if (!voices.length) return
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('swasth_tts_voice_name') : null
-    let v = stored ? voices.find(vo => vo.name === stored) : undefined
-    const preferred = [
-      'Google UK English Female', 'Google US English Female',
-      'Samantha', 'Victoria', 'Karen', 'Tessa', 'Serena', 'Allison', 'Jenny'
-    ]
-    if (!v) for (const name of preferred) { v = voices.find(vo => vo.name === name && vo.lang.toLowerCase().startsWith('en')); if (v) break }
-    if (!v) v = voices.find(vo => /female|samantha|victoria|karen|tessa|serena|allison|jenny/i.test(vo.name) && vo.lang.toLowerCase().startsWith('en'))
-    if (!v) v = voices.find(vo => vo.lang.toLowerCase().startsWith('en'))
-    setSelectedVoice(v || null)
-    setVoiceReady(!!v)
-    if (v) try { localStorage.setItem('swasth_tts_voice_name', v.name) } catch {}
-    if (pendingTextRef.current && v) {
-      const t = pendingTextRef.current; pendingTextRef.current = null
-      window.setTimeout(() => speakNow(t!), 50)
-    }
-  }, [voices])
-
-  const speakNow = (text: string) => {
-    if (!text || !('speechSynthesis' in window)) return
-    if (!voiceReady) { pendingTextRef.current = text; return }
-    window.speechSynthesis.cancel()
-    const u = new SpeechSynthesisUtterance(text.replace(/[*_`#>-]/g, ' '))
-    if (selectedVoice) u.voice = selectedVoice
-    u.rate = 1; u.pitch = 1
-    u.onend = () => { utterRef.current = null }
-    u.onerror = () => { utterRef.current = null }
-    utterRef.current = u
-    window.speechSynthesis.speak(u)
-  }
-  }
-
   const scrollToBottom = () => {
     // Add a small delay to ensure DOM has updated
     setTimeout(() => {
@@ -132,15 +83,6 @@ export default function MedicalChatbot() {
     
     checkApiStatus()
   }, [])
-
-  // Speak the latest bot message when messages change
-  useEffect(() => {
-    const lastBot = [...messages].reverse().find(m => m.type === 'bot')
-    if (!lastBot) return
-    if (lastSpokenRef.current === lastBot.content) return
-    lastSpokenRef.current = lastBot.content
-    speakNow(lastBot.content)
-  }, [messages])
 
   const handleSendMessage = async (content: string, mediaType: 'text' | 'image' | 'voice' = 'text', mediaUrl?: string) => {
     if (!content.trim() && mediaType === 'text') return
