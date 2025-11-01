@@ -21,15 +21,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/test-ai/page.js"
     ],
-    "/health-check/page": [
+    "/api/tts/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/health-check/page.js"
+      "static/chunks/app/api/tts/route.js"
     ],
-    "/_not-found/page": [
+    "/api/heygen/offer/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/api/heygen/offer/route.js"
     ]
   }
 }

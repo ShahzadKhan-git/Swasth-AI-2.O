@@ -101,6 +101,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/doctor-live/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/doctor-live">> = Specific
+  const handler = {} as typeof import("../../app/doctor-live/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/family-vault/add-contact/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/family-vault/add-contact">> = Specific
@@ -335,6 +344,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/heygen/offer/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/heygen/offer">> = Specific
+  const handler = {} as typeof import("../../app/api/heygen/offer/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/infer/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/infer">> = Specific
@@ -384,6 +402,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/test-gemini">> = Specific
   const handler = {} as typeof import("../../app/api/test-gemini/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/tts/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/tts">> = Specific
+  const handler = {} as typeof import("../../app/api/tts/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

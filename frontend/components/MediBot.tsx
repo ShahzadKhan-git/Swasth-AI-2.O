@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, RefreshCw, Activity } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Send, RefreshCw, Activity, Mic, MicOff, RefreshCw as Swap } from 'lucide-react';
+import DoctorAvatar from '@/components/DoctorAvatar';
+import HeygenRealtime from '@/components/HeygenRealtime';
+import { useSpeechRecognition } from 'react-speech-kit';
 
 // Types for message structure
 interface Message {
@@ -30,11 +33,89 @@ export default function MediBot() {
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [currentTip, setCurrentTip] = useState(HEALTH_TIPS[0]);
+  const [useHumanAvatar, setUseHumanAvatar] = useState(true);
+
+  // Web Speech API (browser TTS) for chatbot voice
+  const utterRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const lastSpokenRef = useRef<string>('')
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null)
+  const [voiceReady, setVoiceReady] = useState(false)
+  const pendingTextRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const loadVoices = () => setVoices(window.speechSynthesis?.getVoices?.() || [])
+    loadVoices()
+    window.speechSynthesis?.addEventListener?.('voiceschanged', loadVoices)
+    return () => window.speechSynthesis?.removeEventListener?.('voiceschanged', loadVoices)
+  }, [])
+
+  useEffect(() => {
+    if (!voices.length) return
+    // First, try a stored choice
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('swasth_tts_voice_name') : null
+    let v = stored ? voices.find(vo => vo.name === stored) : undefined
+    // Prefer clearly female voices by explicit names
+    const preferred = [
+      'Google UK English Female', 'Google US English Female',
+      'Samantha', 'Victoria', 'Karen', 'Tessa', 'Serena', 'Allison', 'Jenny'
+    ]
+    if (!v) for (const name of preferred) { v = voices.find(vo => vo.name === name && vo.lang.toLowerCase().startsWith('en')); if (v) break }
+    // Heuristic female
+    if (!v) v = voices.find(vo => /female|samantha|victoria|karen|tessa|serena|allison|jenny/i.test(vo.name) && vo.lang.toLowerCase().startsWith('en'))
+    // Any English as last resort
+    if (!v) v = voices.find(vo => vo.lang.toLowerCase().startsWith('en'))
+    setSelectedVoice(v || null)
+    setVoiceReady(!!v)
+    if (v) try { localStorage.setItem('swasth_tts_voice_name', v.name) } catch {}
+    // If there was pending text before voices loaded, speak now
+    if (pendingTextRef.current && v) {
+      const t = pendingTextRef.current; pendingTextRef.current = null
+      window.setTimeout(() => speakNow(t!), 50)
+    }
+  }, [voices])
+
+  const speakNow = (text: string) => {
+    if (!text || !('speechSynthesis' in window)) return
+    if (!voiceReady) { pendingTextRef.current = text; return }
+    window.speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(text.replace(/[*_`#>-]/g, ' '))
+    if (selectedVoice) u.voice = selectedVoice
+    u.rate = 1; u.pitch = 1
+    u.onend = () => { utterRef.current = null }
+    u.onerror = () => { utterRef.current = null }
+    utterRef.current = u
+    window.speechSynthesis.speak(u)
+  }
+
+  // Voice input (speech-to-text)
+  const [transcript, setTranscript] = useState('');
+  const { listen, listening, stop, supported: sttSupported } = useSpeechRecognition({
+    onResult: (result: string) => setTranscript(result),
+    onEnd: () => {
+      const finalText = transcript.trim()
+      if (finalText) {
+        handleSendMessage(finalText)
+        setTranscript('')
+      }
+    },
+  });
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const avatarModeRef = useRef<boolean>(useHumanAvatar);
+
+  useEffect(() => { avatarModeRef.current = useHumanAvatar }, [useHumanAvatar]);
+
+  // Derive the latest bot message for TTS in the avatar
+  const lastBotMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].sender === 'bot') return messages[i].text;
+    }
+    return '';
+  }, [messages]);
 
   // Auto-scroll to bottom when new messages arrive - but only scroll the chat container, not the page
   const scrollToBottom = () => {
@@ -51,20 +132,20 @@ export default function MediBot() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
-      setMessages([
-        {
-          id: '1',
-          text: "Hello! I'm MediBot, your AI Health Assistant. How can I help you today?",
-          sender: 'bot',
-          timestamp: new Date(),
-        },
-      ]);
-      
+      const greet = {
+        id: '1',
+        text: "Hello! I'm MediBot, your AI Health Assistant. How can I help you today?",
+        sender: 'bot' as const,
+        timestamp: new Date(),
+      }
+      setMessages([greet]);
+      // Speak greeting only when using the human avatar (read latest via ref)
+      if (avatarModeRef.current) speakNow(greet.text)
       // Ensure page is at top after loading
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }, 1500);
 
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); window.speechSynthesis?.cancel() }
   }, []);
 
   // Rotate health tips every 10 seconds
@@ -78,13 +159,14 @@ export default function MediBot() {
   }, []);
 
   // Handle sending messages
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+  const handleSendMessage = async (customText?: string) => {
+    const text = (customText !== undefined ? customText : inputText).trim();
+    if (!text) return;
 
     // Create user message
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: inputText,
+      text,
       sender: 'user',
       timestamp: new Date(),
     };
@@ -93,6 +175,7 @@ export default function MediBot() {
     setMessages((prev) => [...prev, userMessage]);
     setInputText('');
     setIsTyping(true);
+    setTranscript('');
     
     // Prevent any scroll
     const currentScroll = window.scrollY;
@@ -108,6 +191,8 @@ export default function MediBot() {
 
       setMessages((prev) => [...prev, botMessage]);
       setIsTyping(false);
+      // Speak via browser TTS only for human avatar; for 3D avatar the DoctorAvatar handles audio + lipsync
+      if (useHumanAvatar) speakNow(botMessage.text)
       
       // Restore scroll position
       window.scrollTo(0, currentScroll);
@@ -262,6 +347,8 @@ export default function MediBot() {
                     placeholder="Type your health question here..."
                     className="flex-1 px-5 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all duration-300 text-gray-800 placeholder-gray-400"
                     disabled={isTyping}
+                    value={listening ? transcript : inputText}
+                    onChange={(e) => listening ? setTranscript(e.target.value) : setInputText(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -270,8 +357,27 @@ export default function MediBot() {
                     }}
                   />
                   <button
+                    type="button"
+                    onClick={() => {
+                      if (!sttSupported) return
+                      if (listening) {
+                        stop()
+                      } else {
+                        setTranscript('')
+                        listen({ interimResults: true })
+                      }
+                    }}
+                    className={`px-3 sm:px-4 py-3 rounded-xl font-semibold shadow-lg transition-all duration-300 flex items-center gap-2 border-2 ${listening ? 'bg-red-50 border-red-300 text-red-600' : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-50'}`}
+                    aria-label="Toggle voice input"
+                    disabled={!sttSupported || isTyping}
+                  >
+                    {listening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    <span className="hidden sm:inline">{listening ? 'Stop' : 'Speak'}</span>
+                  </button>
+
+                  <button
                     type="submit"
-                    disabled={!inputText.trim() || isTyping}
+                    disabled={!((listening ? transcript : inputText).trim()) || isTyping}
                     className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-300 flex items-center gap-2"
                   >
                     <Send className="w-5 h-5" />
@@ -279,6 +385,25 @@ export default function MediBot() {
                   </button>
                 </form>
               </div>
+            </div>
+
+            {/* Dr. Swasth Avatar section */}
+            <div className="mt-6 animate-fade-in">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold text-blue-900">AI Assistant</h3>
+                <button
+                  type="button"
+                  onClick={() => setUseHumanAvatar(v=>!v)}
+                  className="px-3 py-2 rounded-lg border border-blue-200 text-blue-700 flex items-center gap-2"
+                >
+                  <Swap className="w-4 h-4" /> {useHumanAvatar ? 'Use 3D Avatar' : 'Use Human Avatar'}
+                </button>
+              </div>
+              {useHumanAvatar ? (
+                <HeygenRealtime />
+              ) : (
+                <DoctorAvatar chatResponse={lastBotMessage} muteAudio={false} />
+              )}
             </div>
           </div>
 

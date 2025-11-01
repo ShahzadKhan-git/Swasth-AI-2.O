@@ -1,4 +1,4 @@
-// File: /Users/saadmadni/Downloads/2nd  year/project/SwasthAI 2/SwasThAI/frontend/app/test-ai/page.tsx
+// File: /Users/macbookair/Desktop/Swasth-AI-2.0/Swasth-AI-2.O/frontend/app/test-ai/page.tsx
 import * as entry from '../../../../app/test-ai/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
